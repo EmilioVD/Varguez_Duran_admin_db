@@ -160,7 +160,23 @@ app.post("/api/purchases", async (req, res) => {
   }
 });
 
-// Iniciar servidor
+app.get("/__debug__/routes", (_req, res) => {
+  const getRoutes = (app) =>
+    app._router.stack
+      .filter((r) => r.route)
+      .map((r) => ({
+        methods: Object.keys(r.route.methods),
+        path: r.route.path,
+      }));
+  res.json(getRoutes(app));
+});
+
+app.use((req, res) => {
+  res
+    .status(404)
+    .json({ error: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
+});
+
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
   console.log("Rutas disponibles:");
@@ -168,4 +184,5 @@ app.listen(port, () => {
   console.log(`POST    -> /api/products`);
   console.log(`PUT     -> /api/products/:id`);
   console.log(`POST    -> /api/purchases`);
+  console.log(`GET  -> /__debug__/routes`);
 });

@@ -279,6 +279,50 @@ app.put("/api/purchases/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/purchases/:id", async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const id = Number(req.params.id);
+    await conn.beginTransaction();
+
+    const [[p]] = await conn.query(
+      "SELECT id, status FROM purchases WHERE id=? FOR UPDATE",
+      [id]
+    );
+    if (!p) throw new Error("Compra no encontrada");
+    if (p.status === "COMPLETED")
+      throw new Error("No se puede borrar una compra COMPLETED");
+
+    const [det] = await conn.query(
+      "SELECT product_id, quantity FROM purchase_details WHERE purchase_id=? FOR UPDATE",
+      [id]
+    );
+    for (const d of det) {
+      await conn.query("UPDATE products SET stock = stock + ? WHERE id = ?", [
+        d.quantity,
+        d.product_id,
+      ]);
+    }
+
+    await conn.query("DELETE FROM purchase_details WHERE purchase_id=?", [id]);
+    await conn.query("DELETE FROM purchases WHERE id=?", [id]);
+
+    await conn.commit();
+    res.json({ ok: true, message: "Compra eliminada y stock restaurado" });
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {}
+    res
+      .status(400)
+      .json({ error: err.message || "Error al eliminar la compra" });
+  } finally {
+    try {
+      conn.release();
+    } catch {}
+  }
+});
+
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
   console.log("Rutas disponibles:");
@@ -288,4 +332,5 @@ app.listen(port, () => {
   console.log(`POST    -> /api/purchases`);
   console.log(`GET  -> /__debug__/routes`);
   console.log(`PUT  -> /api/purchases/:id`);
+  console.log(`DELETE -> /api/purchases/:id`);
 });

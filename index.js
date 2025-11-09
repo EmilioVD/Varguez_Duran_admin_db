@@ -368,6 +368,31 @@ app.get("/api/purchases", async (_req, res) => {
   }
 });
 
+app.get("/api/purchases/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const [rows] = await pool.query(
+      `
+      SELECT 
+        p.id AS p_id, u.name AS user_name, p.total, p.status, p.purchase_date,
+        pd.id AS d_id, pr.name AS product_name, pd.quantity, pd.price, pd.subtotal
+      FROM purchases p
+      LEFT JOIN users u             ON u.id = p.user_id
+      LEFT JOIN purchase_details pd ON pd.purchase_id = p.id
+      LEFT JOIN products pr         ON pr.id = pd.product_id
+      WHERE p.id = ?
+      ORDER BY pd.id ASC
+    `,
+      [id]
+    );
+    if (!rows.length)
+      return res.status(404).json({ error: "Compra no encontrada" });
+    res.json(mapPurchases(rows)[0]);
+  } catch (e) {
+    res.status(500).json({ error: "Error al obtener la compra" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
   console.log("Rutas disponibles:");
@@ -379,4 +404,5 @@ app.listen(port, () => {
   console.log(`PUT  -> /api/purchases/:id`);
   console.log(`DELETE -> /api/purchases/:id`);
   console.log(`GET  -> /api/purchases`);
+  console.log(`GET  -> /api/purchases/:id`);
 });

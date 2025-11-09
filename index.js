@@ -323,6 +323,51 @@ app.delete("/api/purchases/:id", async (req, res) => {
   }
 });
 
+function mapPurchases(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.p_id)) {
+      map.set(r.p_id, {
+        id: r.p_id,
+        user: r.user_name || null,
+        total: Number(r.total),
+        status: r.status,
+        purchase_date: r.purchase_date,
+        details: [],
+      });
+    }
+    if (r.d_id) {
+      map.get(r.p_id).details.push({
+        id: r.d_id,
+        product: r.product_name,
+        quantity: r.quantity,
+        price: Number(r.price),
+        subtotal: Number(r.subtotal),
+      });
+    }
+  }
+  return Array.from(map.values());
+}
+
+// ===== NUEVO: GET /api/purchases (lista con JOINs)
+app.get("/api/purchases", async (_req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        p.id AS p_id, u.name AS user_name, p.total, p.status, p.purchase_date,
+        pd.id AS d_id, pr.name AS product_name, pd.quantity, pd.price, pd.subtotal
+      FROM purchases p
+      LEFT JOIN users u             ON u.id = p.user_id
+      LEFT JOIN purchase_details pd ON pd.purchase_id = p.id
+      LEFT JOIN products pr         ON pr.id = pd.product_id
+      ORDER BY p.id DESC, pd.id ASC
+    `);
+    res.json(mapPurchases(rows));
+  } catch (e) {
+    res.status(500).json({ error: "Error al obtener compras" });
+  }
+});
+
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
   console.log("Rutas disponibles:");
@@ -333,4 +378,5 @@ app.listen(port, () => {
   console.log(`GET  -> /__debug__/routes`);
   console.log(`PUT  -> /api/purchases/:id`);
   console.log(`DELETE -> /api/purchases/:id`);
+  console.log(`GET  -> /api/purchases`);
 });

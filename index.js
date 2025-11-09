@@ -177,6 +177,108 @@ app.use((req, res) => {
     .json({ error: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
 });
 
+app.put("/api/purchases/:id", async (req, res) => {
+  const conn = await pool.getConnection();
+  try {
+    const id = Number(req.params.id);
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
+    const { user_id, status, details } = body || {};
+
+    await conn.beginTransaction();
+
+    const [[purchase]] = await conn.query(
+      "SELECT id, status FROM purchases WHERE id=? FOR UPDATE",
+      [id]
+    );
+    if (!purchase) throw new Error("Compra no encontrada");
+    if (purchase.status === "COMPLETED")
+      throw new Error("No se puede modificar una compra COMPLETED");
+
+    if (details) {
+      if (!Array.isArray(details) || details.length < 1 || details.length > 5) {
+        throw new Error("La compra debe tener entre 1 y 5 productos");
+      }
+      for (const d of details) {
+        if (!d.product_id || d.quantity == null || d.price == null) {
+          throw new Error("Cada detalle requiere product_id, quantity y price");
+        }
+        if (!Number.isInteger(d.quantity) || d.quantity <= 0) {
+          throw new Error("quantity debe ser un entero > 0");
+        }
+        if (!Number.isFinite(Number(d.price)))
+          throw new Error("price inválido");
+      }
+    }
+
+    const [oldDet] = await conn.query(
+      "SELECT product_id, quantity FROM purchase_details WHERE purchase_id=? FOR UPDATE",
+      [id]
+    );
+    for (const d of oldDet) {
+      await conn.query("UPDATE products SET stock = stock + ? WHERE id = ?", [
+        d.quantity,
+        d.product_id,
+      ]);
+    }
+    await conn.query("DELETE FROM purchase_details WHERE purchase_id=?", [id]);
+
+    let newTotal = 0;
+    if (details) {
+      for (const d of details) {
+        const [[prod]] = await conn.query(
+          "SELECT id, stock FROM products WHERE id=? FOR UPDATE",
+          [d.product_id]
+        );
+        if (!prod) throw new Error(`Producto ${d.product_id} no existe`);
+        if (prod.stock < d.quantity)
+          throw new Error(`Stock insuficiente para producto ${d.product_id}`);
+        const subtotal = Number(d.price) * Number(d.quantity);
+        newTotal += subtotal;
+
+        await conn.query(
+          "INSERT INTO purchase_details (purchase_id, product_id, quantity, price, subtotal) VALUES (?, ?, ?, ?, ?)",
+          [id, d.product_id, d.quantity, d.price, subtotal]
+        );
+        await conn.query("UPDATE products SET stock = stock - ? WHERE id = ?", [
+          d.quantity,
+          d.product_id,
+        ]);
+      }
+    } else {
+      const [[p]] = await conn.query("SELECT total FROM purchases WHERE id=?", [
+        id,
+      ]);
+      newTotal = Number(p.total);
+    }
+
+    if (newTotal > 3500) throw new Error("El total no puede superar 3500");
+
+    await conn.query(
+      "UPDATE purchases SET user_id = COALESCE(?, user_id), total=?, status=?, updated_at=NOW() WHERE id=?",
+      [user_id ?? null, newTotal, status ?? purchase.status, id]
+    );
+
+    await conn.commit();
+    res.json({
+      ok: true,
+      id,
+      total: newTotal,
+      status: status ?? purchase.status,
+    });
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {}
+    res
+      .status(400)
+      .json({ error: err.message || "Error al actualizar la compra" });
+  } finally {
+    try {
+      conn.release();
+    } catch {}
+  }
+});
+
 app.listen(port, () => {
   console.log(`Servidor corriendo en http://localhost:${port}`);
   console.log("Rutas disponibles:");
@@ -185,4 +287,5 @@ app.listen(port, () => {
   console.log(`PUT     -> /api/products/:id`);
   console.log(`POST    -> /api/purchases`);
   console.log(`GET  -> /__debug__/routes`);
+  console.log(`PUT  -> /api/purchases/:id`);
 });

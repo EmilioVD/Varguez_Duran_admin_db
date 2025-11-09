@@ -171,12 +171,6 @@ app.get("/__debug__/routes", (_req, res) => {
   res.json(getRoutes(app));
 });
 
-app.use((req, res) => {
-  res
-    .status(404)
-    .json({ error: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
-});
-
 app.put("/api/purchases/:id", async (req, res) => {
   const conn = await pool.getConnection();
   try {
@@ -391,6 +385,12 @@ app.get("/api/purchases/:id", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: "Error al obtener la compra" });
   }
+});
+
+app.use((req, res) => {
+  res
+    .status(404)
+    .json({ error: `Ruta no encontrada: ${req.method} ${req.originalUrl}` });
 });
 
 app.listen(port, () => {

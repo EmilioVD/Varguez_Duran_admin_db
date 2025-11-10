@@ -7,7 +7,7 @@ app.use(express.json());
 
 const { pool, ping } = require("./connection");
 
-// Salud
+//Aqui puedo verifica que si esta corriendo mi api
 app.get("/ping", async (_req, res) => {
   try {
     const ok = await ping();
@@ -17,12 +17,10 @@ app.get("/ping", async (_req, res) => {
   }
 });
 
-// Página
 app.get("/", (_req, res) =>
   res.send("API de productos funcionando correctamente")
 );
 
-// PRODUCTS (ya los tenías)
 app.get("/api/products", async (_req, res) => {
   try {
     const [rows] = await pool.query("SELECT * FROM products ORDER BY id DESC");
@@ -73,7 +71,7 @@ app.put("/api/products/:id", async (req, res) => {
   }
 });
 
-// ====== PURCHASES (solo POST) ======
+//Aqui ya implemento todos mis purchases
 app.post("/api/purchases", async (req, res) => {
   const conn = await pool.getConnection();
   try {
@@ -248,7 +246,6 @@ app.put("/api/purchases/:id", async (req, res) => {
     if (newTotal > 3500) throw new Error("El total no puede superar 3500");
 
     await conn.query(
-      "UPDATE purchases SET user_id = COALESCE(?, user_id), total=?, status=?, updated_at=NOW() WHERE id=?",
       "UPDATE purchases SET user_id = COALESCE(?, user_id), total=?, status=? WHERE id=?",
       [user_id ?? null, newTotal, status ?? purchase.status, id]
     );
@@ -344,7 +341,6 @@ function mapPurchases(rows) {
   return Array.from(map.values());
 }
 
-// ===== NUEVO: GET /api/purchases (lista con JOINs)
 app.get("/api/purchases", async (_req, res) => {
   try {
     const [rows] = await pool.query(`

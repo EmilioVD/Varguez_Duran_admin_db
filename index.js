@@ -249,6 +249,7 @@ app.put("/api/purchases/:id", async (req, res) => {
 
     await conn.query(
       "UPDATE purchases SET user_id = COALESCE(?, user_id), total=?, status=?, updated_at=NOW() WHERE id=?",
+      "UPDATE purchases SET user_id = COALESCE(?, user_id), total=?, status=? WHERE id=?",
       [user_id ?? null, newTotal, status ?? purchase.status, id]
     );
 
@@ -359,6 +360,34 @@ app.get("/api/purchases", async (_req, res) => {
     res.json(mapPurchases(rows));
   } catch (e) {
     res.status(500).json({ error: "Error al obtener compras" });
+  }
+});
+
+app.get("/__debug__/routes", (_req, res) => {
+  try {
+    const collect = (stack) => {
+      const out = [];
+      for (const layer of stack || []) {
+        if (layer.route && layer.route.path) {
+          out.push({
+            methods: Object.keys(layer.route.methods || {}),
+            path: layer.route.path,
+          });
+          continue;
+        }
+
+        const handle = layer.handle;
+        const childStack =
+          (handle && (handle.stack || handle.router?.stack)) || null;
+        if (Array.isArray(childStack)) out.push(...collect(childStack));
+      }
+      return out;
+    };
+
+    const rootStack = (app._router && app._router.stack) || [];
+    res.json(collect(rootStack));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
 });
 
